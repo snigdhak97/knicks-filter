@@ -10,146 +10,120 @@
   html, body {
     margin: 0; height: 100%; background: #000; overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #fff;
+    color: #fff; touch-action: manipulation;
   }
-  /* The stage holds the camera + frame, kept at the frame's aspect ratio. */
-  #stage {
-    position: absolute; inset: 0; display: flex;
-    align-items: center; justify-content: center;
-  }
-  #frameBox {
-    position: relative; height: 100%; max-width: 100%;
-    aspect-ratio: var(--ar, 639 / 1024);
-  }
-  #frame, #shot {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-  }
-  /* Camera is positioned to the photo window (set in JS) and fills it.
-     With a portrait stream this crops almost nothing. */
-  #video { position: absolute; object-fit: cover; background: #fff; z-index: 1; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #frameBox { position: relative; height: 100%; max-width: 100%; aspect-ratio: var(--ar, 638 / 1016); }
+  #frame, #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* The photo editor canvas is positioned to the photo window (set in JS). */
+  #editCanvas { position: absolute; z-index: 1; background: #fff; touch-action: none; }
   #frame { object-fit: contain; z-index: 2; pointer-events: none; }
   #shot  { object-fit: contain; z-index: 3; display: none; background: #000; }
-  /* Mirror the selfie preview so it feels like a mirror. */
-  body.mirror #video { transform: scaleX(-1); }
 
   /* Controls */
   #controls {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
-    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
-    display: flex; align-items: center; justify-content: center; gap: 28px;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
   }
-  .iconbtn {
-    width: 56px; height: 56px; border-radius: 50%; border: none;
-    background: rgba(0,0,0,0.45); backdrop-filter: blur(6px);
-    color: #fff; font-size: 24px; display: flex; align-items: center;
-    justify-content: center; cursor: pointer;
+  #zoomRow { display: none; align-items: center; gap: 10px; width: min(90%, 420px); }
+  #zoomRow.show { display: flex; }
+  #zoom { flex: 1; accent-color: var(--knicks-orange); }
+  .zlabel { font-size: 18px; opacity: 0.9; width: 18px; text-align: center; }
+  #btnRow { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .btn {
+    padding: 13px 20px; border: none; border-radius: 999px; font-size: 16px;
+    font-weight: 700; cursor: pointer; color: #fff;
   }
-  #shutter {
-    width: 78px; height: 78px; border-radius: 50%;
-    border: 5px solid #fff; background: var(--knicks-orange); cursor: pointer;
-    box-shadow: 0 0 0 4px rgba(255,255,255,0.25);
-  }
-  #shutter:active { transform: scale(0.94); }
-  .hidden { display: none !important; }
+  .btn.primary { background: var(--knicks-orange); }
+  .btn.ghost { background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); }
+  .btn:active { transform: scale(0.96); }
+  .btn[disabled] { opacity: 0.4; }
 
-  /* Permission / error overlay */
+  /* Intro / message overlay */
   #msg {
-    position: absolute; inset: 0; z-index: 10; display: none;
+    position: absolute; inset: 0; z-index: 10; display: flex;
     flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 32px; gap: 18px; background: var(--knicks-blue);
   }
-  #msg.show { display: flex; }
-  #msg h1 { margin: 0; font-size: 22px; }
-  #msg p { margin: 0; opacity: 0.9; line-height: 1.5; max-width: 320px; }
-  #startBtn {
-    margin-top: 8px; padding: 14px 28px; border: none; border-radius: 999px;
-    background: var(--knicks-orange); color: #fff; font-size: 17px;
-    font-weight: 700; cursor: pointer;
+  #msg.hide { display: none; }
+  #msg h1 { margin: 0; font-size: 24px; }
+  #msg p { margin: 0; opacity: 0.92; line-height: 1.5; max-width: 320px; }
+  .toast {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 11; background: rgba(0,0,0,0.78); padding: 10px 16px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
   }
+  .toast.show { opacity: 1; }
 </style>
 </head>
-<body class="mirror">
+<body>
   <div id="stage">
     <div id="frameBox">
-      <video id="video" autoplay playsinline muted></video>
+      <canvas id="editCanvas"></canvas>
       <img id="frame" src="frame_transparent.png" alt="Knicks frame" />
       <img id="shot" alt="Your photo" />
     </div>
   </div>
 
   <div id="controls">
-    <button class="iconbtn" id="flipBtn" title="Flip camera">&#x21BB;</button>
-    <button id="shutter" title="Take photo"></button>
-    <button class="iconbtn" id="saveBtn" title="Save photo">&#x2193;</button>
+    <div id="zoomRow">
+      <span class="zlabel">&#x2212;</span>
+      <input id="zoom" type="range" min="1" max="5" step="0.01" value="1" />
+      <span class="zlabel">+</span>
+    </div>
+    <div id="btnRow">
+      <button class="btn ghost" id="changeBtn">Photo</button>
+      <button class="btn primary" id="saveBtn" disabled>Save</button>
+    </div>
   </div>
 
   <div id="msg">
-    <h1>Let's Go Knicks!</h1>
-    <p id="msgText">Tap below and allow camera access to start.</p>
-    <button id="startBtn">Start camera</button>
+    <h1>Let's Go Knicks! 🏀</h1>
+    <p>Add a photo and it'll drop into the frame. Then drag and pinch to position it.</p>
+    <button class="btn primary" id="pickBtn">Choose a photo</button>
   </div>
 
+  <div class="toast" id="toast"></div>
+  <input id="file" type="file" accept="image/*" hidden />
+
 <script>
-const video   = document.getElementById('video');
-const frameImg= document.getElementById('frame');
-const shot    = document.getElementById('shot');
-const frameBox= document.getElementById('frameBox');
-const flipBtn = document.getElementById('flipBtn');
-const saveBtn = document.getElementById('saveBtn');
-const shutter = document.getElementById('shutter');
-const msg     = document.getElementById('msg');
-const msgText = document.getElementById('msgText');
-const startBtn= document.getElementById('startBtn');
+const frameImg = document.getElementById('frame');
+const frameBox = document.getElementById('frameBox');
+const canvas   = document.getElementById('editCanvas');
+const ctx      = canvas.getContext('2d');
+const shot     = document.getElementById('shot');
+const fileIn   = document.getElementById('file');
+const zoomRow  = document.getElementById('zoomRow');
+const zoom     = document.getElementById('zoom');
+const saveBtn  = document.getElementById('saveBtn');
+const changeBtn= document.getElementById('changeBtn');
+const pickBtn  = document.getElementById('pickBtn');
+const msg      = document.getElementById('msg');
+const toastEl  = document.getElementById('toast');
 
-let facing = 'user';        // 'user' = front/selfie, 'environment' = back
-let stream = null;
-let lastPhotoURL = null;
+let win = null;            // transparent photo window in natural frame px
+let img = null;            // loaded photo (ImageBitmap or Image)
+let imgW = 0, imgH = 0;
+let baseScale = 1;         // scale that makes the photo "cover" the window
+let z = 1, panX = 0, panY = 0;
 
-function setMirror() {
-  document.body.classList.toggle('mirror', facing === 'user');
+function toast(t) {
+  toastEl.textContent = t; toastEl.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
 
-async function startCamera() {
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  // Ask for a portrait stream shaped like the photo box, so it fills the
-  // box with essentially no crop (instead of a landscape strip + white bars).
-  const ar = win ? win.w / win.h : 9 / 16;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: facing,
-        aspectRatio: { ideal: ar },
-        width: { ideal: 1080 }, height: { ideal: 1920 }
-      },
-      audio: false
-    });
-    video.srcObject = stream;
-    await video.play().catch(() => {});
-    msg.classList.remove('show');
-    setMirror();
-  } catch (err) {
-    msgText.textContent = location.protocol === 'https:' || location.hostname === 'localhost'
-      ? 'Camera was blocked. Check your browser permissions and tap Start again.'
-      : 'Camera needs a secure (https) page. Open this via the hosted link, not a file path.';
-    msg.classList.add('show');
-  }
-}
-
-// The transparent photo window, in natural frame pixels. Detected from the
-// frame's alpha channel once it loads, so it always matches the artwork.
-let win = null;
-
+// --- Detect the transparent window from the frame's alpha channel ---
 frameImg.addEventListener('load', () => {
   const W = frameImg.naturalWidth, H = frameImg.naturalHeight;
   if (!W || !H) return;
   frameBox.style.setProperty('--ar', W + ' / ' + H);
 
-  // Scan the alpha channel for the bounding box of transparent pixels.
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
-  const cx = c.getContext('2d');
-  cx.drawImage(frameImg, 0, 0);
-  const data = cx.getImageData(0, 0, W, H).data;
+  const cc = c.getContext('2d');
+  cc.drawImage(frameImg, 0, 0);
+  const data = cc.getImageData(0, 0, W, H).data;
   let minX = W, minY = H, maxX = 0, maxY = 0;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -161,82 +135,144 @@ frameImg.addEventListener('load', () => {
   }
   win = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, W, H };
 
-  // Position the live video element exactly over that window.
-  video.style.left   = (win.x / W * 100) + '%';
-  video.style.top    = (win.y / H * 100) + '%';
-  video.style.width  = (win.w / W * 100) + '%';
-  video.style.height = (win.h / H * 100) + '%';
+  // Position + size the editing canvas exactly over the window.
+  canvas.width = win.w; canvas.height = win.h;     // backing store = natural px
+  canvas.style.left   = (win.x / W * 100) + '%';
+  canvas.style.top    = (win.y / H * 100) + '%';
+  canvas.style.width  = (win.w / W * 100) + '%';
+  canvas.style.height = (win.h / H * 100) + '%';
 });
 
-flipBtn.addEventListener('click', () => {
-  facing = facing === 'user' ? 'environment' : 'user';
-  startCamera();
-});
-
-startBtn.addEventListener('click', startCamera);
-
-// Draw the video "cover"-fit into a target rect (fills it, centered),
-// clipped to the rect so it never spills outside the window.
-function drawCover(ctx, vid, dx, dy, dw, dh, mirror) {
-  const vw = vid.videoWidth, vh = vid.videoHeight;
-  if (!vw || !vh) return;
-  const scale = Math.max(dw / vw, dh / vh);
-  const rw = vw * scale, rh = vh * scale;
-  const ox = dx + (dw - rw) / 2, oy = dy + (dh - rh) / 2;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
-  if (mirror) { ctx.translate(2 * ox + rw, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(vid, ox, oy, rw, rh);
-  ctx.restore();
+// --- Load a chosen photo (honoring EXIF orientation) ---
+async function loadFile(file) {
+  if (!file) return;
+  try {
+    if (window.createImageBitmap) {
+      img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } else { throw 0; }
+  } catch (e) {
+    img = await new Promise((res, rej) => {
+      const im = new Image(); im.onload = () => res(im); im.onerror = rej;
+      im.src = URL.createObjectURL(file);
+    });
+  }
+  imgW = img.width || img.naturalWidth;
+  imgH = img.height || img.naturalHeight;
+  baseScale = Math.max(win.w / imgW, win.h / imgH);  // cover
+  z = 1; panX = 0; panY = 0;
+  zoom.value = 1;
+  msg.classList.add('hide');
+  zoomRow.classList.add('show');
+  saveBtn.disabled = false;
+  shot.style.display = 'none';
+  render();
+  toast('Drag to move • pinch or slider to zoom');
 }
 
-shutter.addEventListener('click', () => {
-  if (!video.videoWidth || !win) return;
-  const W = win.W, H = win.H;
-  const canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  // White window background, the whole camera image fit inside it, frame on top.
+pickBtn.addEventListener('click', () => fileIn.click());
+changeBtn.addEventListener('click', () => fileIn.click());
+fileIn.addEventListener('change', (e) => loadFile(e.target.files[0]));
+
+// --- Render the photo into the editing canvas with current zoom/pan ---
+function clampPan() {
+  const dw = imgW * baseScale * z, dh = imgH * baseScale * z;
+  const mx = Math.max(0, (dw - win.w) / 2), my = Math.max(0, (dh - win.h) / 2);
+  panX = Math.max(-mx, Math.min(mx, panX));
+  panY = Math.max(-my, Math.min(my, panY));
+}
+function placement() {
+  const dw = imgW * baseScale * z, dh = imgH * baseScale * z;
+  return { dw, dh, ox: (win.w - dw) / 2 + panX, oy: (win.h - dh) / 2 + panY };
+}
+function render() {
+  if (!img || !win) return;
+  clampPan();
+  const { dw, dh, ox, oy } = placement();
   ctx.fillStyle = '#fff';
-  ctx.fillRect(win.x, win.y, win.w, win.h);
-  drawCover(ctx, video, win.x, win.y, win.w, win.h, facing === 'user');
-  ctx.drawImage(frameImg, 0, 0, W, H);
+  ctx.fillRect(0, 0, win.w, win.h);
+  ctx.drawImage(img, ox, oy, dw, dh);
+}
 
-  if (lastPhotoURL) URL.revokeObjectURL(lastPhotoURL);
-  canvas.toBlob((blob) => {
-    lastPhotoURL = URL.createObjectURL(blob);
-    shot.src = lastPhotoURL;
-    shot.style.display = 'block';
-    shot._blob = blob;
-  }, 'image/jpeg', 0.92);
+zoom.addEventListener('input', () => {
+  z = parseFloat(zoom.value);
+  render();
 });
 
-// Tap the frozen photo to dismiss it and go back to live camera.
-shot.addEventListener('click', () => {
-  shot.style.display = 'none';
-});
+// --- Drag to pan, pinch to zoom (pointer events) ---
+const pointers = new Map();
+let pinchStart = null;
+function canvasScale() { return canvas.clientWidth / win.w; }  // css px per natural px
 
-saveBtn.addEventListener('click', async () => {
-  const blob = shot._blob;
-  if (!blob) {
-    msgText.textContent = 'Take a photo first, then tap save.';
-    msg.classList.add('show');
-    setTimeout(() => msg.classList.remove('show'), 1600);
-    return;
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const p = [...pointers.values()];
+    pinchStart = { dist: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), z };
   }
-  const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
-  // Prefer the native share sheet on phones (lets you Save to Photos).
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); return; } catch (e) {}
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId) || !img) return;
+  const prev = pointers.get(e.pointerId);
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2 && pinchStart) {
+    const p = [...pointers.values()];
+    const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+    z = Math.max(1, Math.min(5, pinchStart.z * (dist / pinchStart.dist)));
+    zoom.value = z;
+    render();
+  } else if (pointers.size === 1) {
+    const s = canvasScale();
+    panX += dx / s; panY += dy / s;
+    render();
   }
-  // Fallback: download link.
-  const a = document.createElement('a');
-  a.href = lastPhotoURL; a.download = 'knicks.jpg';
-  document.body.appendChild(a); a.click(); a.remove();
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+// Double-tap to reset position/zoom
+let lastTap = 0;
+canvas.addEventListener('pointerup', () => {
+  const now = performance.now();
+  if (now - lastTap < 300) { z = 1; zoom.value = 1; panX = 0; panY = 0; render(); }
+  lastTap = now;
 });
 
-// Show the start prompt on load (camera needs a user tap on iOS).
-msg.classList.add('show');
+// --- Save: composite photo + frame at full resolution ---
+let lastURL = null;
+saveBtn.addEventListener('click', () => {
+  if (!img || !win) return;
+  const out = document.createElement('canvas');
+  out.width = win.W; out.height = win.H;
+  const o = out.getContext('2d');
+  o.fillStyle = '#fff';
+  o.fillRect(win.x, win.y, win.w, win.h);
+  const { dw, dh, ox, oy } = placement();
+  o.save();
+  o.beginPath(); o.rect(win.x, win.y, win.w, win.h); o.clip();
+  o.drawImage(img, win.x + ox, win.y + oy, dw, dh);
+  o.restore();
+  o.drawImage(frameImg, 0, 0, win.W, win.H);
+
+  if (lastURL) URL.revokeObjectURL(lastURL);
+  out.toBlob(async (blob) => {
+    lastURL = URL.createObjectURL(blob);
+    const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; } catch (e) {}
+    }
+    const a = document.createElement('a');
+    a.href = lastURL; a.download = 'knicks.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Saved to your downloads');
+  }, 'image/jpeg', 0.95);
+});
 </script>
 </body>
 </html>
