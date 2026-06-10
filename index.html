@@ -24,9 +24,9 @@
   #frame, #shot {
     position: absolute; inset: 0; width: 100%; height: 100%;
   }
-  /* Camera is positioned to the photo window (set in JS) and shows the
-     WHOLE frame uncropped; leftover slivers stay white like the box. */
-  #video { position: absolute; object-fit: contain; background: #fff; z-index: 1; }
+  /* Camera is positioned to the photo window (set in JS) and fills it.
+     With a portrait stream this crops almost nothing. */
+  #video { position: absolute; object-fit: cover; background: #fff; z-index: 1; }
   #frame { object-fit: contain; z-index: 2; pointer-events: none; }
   #shot  { object-fit: contain; z-index: 3; display: none; background: #000; }
   /* Mirror the selfie preview so it feels like a mirror. */
@@ -111,9 +111,16 @@ function setMirror() {
 
 async function startCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
+  // Ask for a portrait stream shaped like the photo box, so it fills the
+  // box with essentially no crop (instead of a landscape strip + white bars).
+  const ar = win ? win.w / win.h : 9 / 16;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      video: {
+        facingMode: facing,
+        aspectRatio: { ideal: ar },
+        width: { ideal: 1080 }, height: { ideal: 1920 }
+      },
       audio: false
     });
     video.srcObject = stream;
@@ -168,14 +175,16 @@ flipBtn.addEventListener('click', () => {
 
 startBtn.addEventListener('click', startCamera);
 
-// Draw the WHOLE video "contain"-fit into a target rect (no crop), centered.
-function drawContain(ctx, vid, dx, dy, dw, dh, mirror) {
+// Draw the video "cover"-fit into a target rect (fills it, centered),
+// clipped to the rect so it never spills outside the window.
+function drawCover(ctx, vid, dx, dy, dw, dh, mirror) {
   const vw = vid.videoWidth, vh = vid.videoHeight;
   if (!vw || !vh) return;
-  const scale = Math.min(dw / vw, dh / vh);
+  const scale = Math.max(dw / vw, dh / vh);
   const rw = vw * scale, rh = vh * scale;
   const ox = dx + (dw - rw) / 2, oy = dy + (dh - rh) / 2;
   ctx.save();
+  ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
   if (mirror) { ctx.translate(2 * ox + rw, 0); ctx.scale(-1, 1); }
   ctx.drawImage(vid, ox, oy, rw, rh);
   ctx.restore();
@@ -190,7 +199,7 @@ shutter.addEventListener('click', () => {
   // White window background, the whole camera image fit inside it, frame on top.
   ctx.fillStyle = '#fff';
   ctx.fillRect(win.x, win.y, win.w, win.h);
-  drawContain(ctx, video, win.x, win.y, win.w, win.h, facing === 'user');
+  drawCover(ctx, video, win.x, win.y, win.w, win.h, facing === 'user');
   ctx.drawImage(frameImg, 0, 0, W, H);
 
   if (lastPhotoURL) URL.revokeObjectURL(lastPhotoURL);
