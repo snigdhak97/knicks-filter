@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Knicks Filter</title>
+<style>
+  :root { --knicks-blue: #1d42ba; --knicks-orange: #f58426; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: #000; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #fff;
+  }
+  /* The stage holds the camera + frame, kept at the frame's aspect ratio. */
+  #stage {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+  }
+  #frameBox {
+    position: relative; height: 100%; max-width: 100%;
+    aspect-ratio: var(--ar, 639 / 1024);
+  }
+  #video, #frame, #shot {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+  }
+  #video { object-fit: cover; background: #111; z-index: 1; }
+  #frame { object-fit: contain; z-index: 2; pointer-events: none; }
+  #shot  { object-fit: contain; z-index: 3; display: none; background: #000; }
+  /* Mirror the selfie preview so it feels like a mirror. */
+  body.mirror #video { transform: scaleX(-1); }
+
+  /* Controls */
+  #controls {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    display: flex; align-items: center; justify-content: center; gap: 28px;
+  }
+  .iconbtn {
+    width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: rgba(0,0,0,0.45); backdrop-filter: blur(6px);
+    color: #fff; font-size: 24px; display: flex; align-items: center;
+    justify-content: center; cursor: pointer;
+  }
+  #shutter {
+    width: 78px; height: 78px; border-radius: 50%;
+    border: 5px solid #fff; background: var(--knicks-orange); cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.25);
+  }
+  #shutter:active { transform: scale(0.94); }
+  .hidden { display: none !important; }
+
+  /* Permission / error overlay */
+  #msg {
+    position: absolute; inset: 0; z-index: 10; display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 32px; gap: 18px; background: var(--knicks-blue);
+  }
+  #msg.show { display: flex; }
+  #msg h1 { margin: 0; font-size: 22px; }
+  #msg p { margin: 0; opacity: 0.9; line-height: 1.5; max-width: 320px; }
+  #startBtn {
+    margin-top: 8px; padding: 14px 28px; border: none; border-radius: 999px;
+    background: var(--knicks-orange); color: #fff; font-size: 17px;
+    font-weight: 700; cursor: pointer;
+  }
+</style>
+</head>
+<body class="mirror">
+  <div id="stage">
+    <div id="frameBox">
+      <video id="video" autoplay playsinline muted></video>
+      <img id="frame" src="frame_transparent.png" alt="Knicks frame" />
+      <img id="shot" alt="Your photo" />
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="iconbtn" id="flipBtn" title="Flip camera">&#x21BB;</button>
+    <button id="shutter" title="Take photo"></button>
+    <button class="iconbtn" id="saveBtn" title="Save photo">&#x2193;</button>
+  </div>
+
+  <div id="msg">
+    <h1>Let's Go Knicks!</h1>
+    <p id="msgText">Tap below and allow camera access to start.</p>
+    <button id="startBtn">Start camera</button>
+  </div>
+
+<script>
+const video   = document.getElementById('video');
+const frameImg= document.getElementById('frame');
+const shot    = document.getElementById('shot');
+const frameBox= document.getElementById('frameBox');
+const flipBtn = document.getElementById('flipBtn');
+const saveBtn = document.getElementById('saveBtn');
+const shutter = document.getElementById('shutter');
+const msg     = document.getElementById('msg');
+const msgText = document.getElementById('msgText');
+const startBtn= document.getElementById('startBtn');
+
+let facing = 'user';        // 'user' = front/selfie, 'environment' = back
+let stream = null;
+let lastPhotoURL = null;
+
+function setMirror() {
+  document.body.classList.toggle('mirror', facing === 'user');
+}
+
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    msg.classList.remove('show');
+    setMirror();
+  } catch (err) {
+    msgText.textContent = location.protocol === 'https:' || location.hostname === 'localhost'
+      ? 'Camera was blocked. Check your browser permissions and tap Start again.'
+      : 'Camera needs a secure (https) page. Open this via the hosted link, not a file path.';
+    msg.classList.add('show');
+  }
+}
+
+// Keep the frame box at the frame image's true aspect ratio.
+frameImg.addEventListener('load', () => {
+  if (frameImg.naturalWidth && frameImg.naturalHeight) {
+    frameBox.style.setProperty('--ar', frameImg.naturalWidth + ' / ' + frameImg.naturalHeight);
+  }
+});
+
+flipBtn.addEventListener('click', () => {
+  facing = facing === 'user' ? 'environment' : 'user';
+  startCamera();
+});
+
+startBtn.addEventListener('click', startCamera);
+
+// Draw the video with "cover" fit into a target rect on the canvas.
+function drawCover(ctx, vid, dw, dh, mirror) {
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  if (!vw || !vh) return;
+  const scale = Math.max(dw / vw, dh / vh);
+  const sw = dw / scale, sh = dh / scale;
+  const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+  ctx.save();
+  if (mirror) { ctx.translate(dw, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, dw, dh);
+  ctx.restore();
+}
+
+shutter.addEventListener('click', () => {
+  if (!video.videoWidth) return;
+  const W = frameImg.naturalWidth, H = frameImg.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  // Camera first (behind), then the frame on top.
+  drawCover(ctx, video, W, H, facing === 'user');
+  ctx.drawImage(frameImg, 0, 0, W, H);
+
+  if (lastPhotoURL) URL.revokeObjectURL(lastPhotoURL);
+  canvas.toBlob((blob) => {
+    lastPhotoURL = URL.createObjectURL(blob);
+    shot.src = lastPhotoURL;
+    shot.style.display = 'block';
+    shot._blob = blob;
+  }, 'image/jpeg', 0.92);
+});
+
+// Tap the frozen photo to dismiss it and go back to live camera.
+shot.addEventListener('click', () => {
+  shot.style.display = 'none';
+});
+
+saveBtn.addEventListener('click', async () => {
+  const blob = shot._blob;
+  if (!blob) {
+    msgText.textContent = 'Take a photo first, then tap save.';
+    msg.classList.add('show');
+    setTimeout(() => msg.classList.remove('show'), 1600);
+    return;
+  }
+  const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
+  // Prefer the native share sheet on phones (lets you Save to Photos).
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; } catch (e) {}
+  }
+  // Fallback: download link.
+  const a = document.createElement('a');
+  a.href = lastPhotoURL; a.download = 'knicks.jpg';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+// Show the start prompt on load (camera needs a user tap on iOS).
+msg.classList.add('show');
+</script>
+</body>
+</html>
