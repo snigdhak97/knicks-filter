@@ -21,9 +21,10 @@ Usage: python3 make_transparent.py [input.png] [output.png] [close_px]
 import sys
 from PIL import Image, ImageDraw, ImageFilter
 
-src   = sys.argv[1] if len(sys.argv) > 1 else "knicks frame 1.png"
-out   = sys.argv[2] if len(sys.argv) > 2 else "frame_transparent.png"
-CLOSE = int(sys.argv[3]) if len(sys.argv) > 3 else 4
+src    = sys.argv[1] if len(sys.argv) > 1 else "knicks frame 1.png"
+out    = sys.argv[2] if len(sys.argv) > 2 else "frame_transparent.png"
+BORDER = int(sys.argv[3]) if len(sys.argv) > 3 else 5    # white matte px around photo + logo
+CLOSE  = 4                                               # fixed: fill logo's internal holes
 
 img = Image.open(src).convert("RGBA")
 W, H = img.size
@@ -34,8 +35,8 @@ SENT = (255, 0, 255)
 ImageDraw.floodfill(rgb, (W // 2, H // 2), SENT, thresh=40)
 fp = rgb.load()
 
-# 2) Logo silhouette = colored (non-white) pixels in the upper-center region,
-#    then dilate to cover enclosed whites (banner) + a tight outline.
+# 2) Logo silhouette = colored (non-white) pixels in the upper-center region;
+#    CLOSE fills the logo's internal holes (banner) without an outer border.
 op = img.load()
 logo = Image.new("L", (W, H), 0)
 lp = logo.load()
@@ -45,20 +46,30 @@ for y in range(0, int(H * 0.27)):           # top ~27% holds the logo
         r, g, b, a = op[x, y]
         if a > 200 and not (r > 235 and g > 235 and b > 235):  # not white = logo ink
             lp[x, y] = 255
-# Morphological close = dilate then erode: fills internal holes, no outer border.
-filled = logo.filter(ImageFilter.MaxFilter(2 * CLOSE + 1)) \
-             .filter(ImageFilter.MinFilter(2 * CLOSE + 1))
-hp = filled.load()
+logo = logo.filter(ImageFilter.MaxFilter(2 * CLOSE + 1)) \
+           .filter(ImageFilter.MinFilter(2 * CLOSE + 1))
+lp = logo.load()
 
-# 3) Transparent = box-white AND NOT part of the (hole-filled) logo silhouette.
+# 3) Photo region = box-white AND NOT logo. Then ERODE it by BORDER so a white
+#    frame is left around the WHOLE photo (outer rectangle + around the logo).
+photo = Image.new("L", (W, H), 0)
+pp = photo.load()
+for y in range(H):
+    for x in range(W):
+        if fp[x, y] == SENT and lp[x, y] == 0:
+            pp[x, y] = 255
+if BORDER > 0:
+    photo = photo.filter(ImageFilter.MinFilter(2 * BORDER + 1))
+pmask = photo.load()
+
 px = img.load()
 count = 0
 for y in range(H):
     for x in range(W):
-        if fp[x, y] == SENT and hp[x, y] == 0:
+        if pmask[x, y] == 255:
             r, g, b, _ = px[x, y]
             px[x, y] = (r, g, b, 0)
             count += 1
 
 img.save(out)
-print(f"Close={CLOSE}px. Made {count} px transparent. Image {W}x{H} -> {out}")
+print(f"Border={BORDER}px. Made {count} px transparent. Image {W}x{H} -> {out}")
