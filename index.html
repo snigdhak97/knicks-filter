@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Knicks" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
-  :root { --knicks-blue: #1d42ba; --knicks-orange: #f58426; }
+  :root { --knicks-blue: #003ca6; --knicks-orange: #f58426; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; height: 100%; background: #000; overflow: hidden;
@@ -21,25 +21,35 @@
   }
   #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
   #frameBox { position: relative; height: 100%; max-width: 100%; aspect-ratio: var(--ar, 638 / 1016); }
-  #frame, #shot { position: absolute; inset: 0; width: 100%; height: 100%; }
-  /* The photo editor canvas is positioned to the photo window (set in JS). */
+  #frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 2; pointer-events: none; }
   #editCanvas { position: absolute; z-index: 1; background: #fff; touch-action: none; }
-  #frame { object-fit: contain; z-index: 2; pointer-events: none; }
-  #shot  { object-fit: contain; z-index: 3; display: none; background: #000; }
 
-  /* Controls */
+  /* Frame picker strip (top) */
+  #frames {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: none;
+    gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
+    overflow-x: auto; white-space: nowrap; background: linear-gradient(#000a, #0000);
+  }
+  #frames.show { display: flex; }
+  .thumb {
+    height: 64px; width: auto; border-radius: 8px; border: 2px solid transparent;
+    flex: 0 0 auto; background: #fff; cursor: pointer; object-fit: contain;
+  }
+  .thumb.active { border-color: var(--knicks-orange); }
+
+  /* Bottom controls */
   #controls {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
-    padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
   }
-  #zoomRow { display: none; align-items: center; gap: 10px; width: min(90%, 420px); }
+  #zoomRow { display: none; align-items: center; gap: 10px; width: min(92%, 420px); }
   #zoomRow.show { display: flex; }
   #zoom { flex: 1; accent-color: var(--knicks-orange); }
   .zlabel { font-size: 18px; opacity: 0.9; width: 18px; text-align: center; }
-  #btnRow { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  #btnRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
   .btn {
-    padding: 13px 20px; border: none; border-radius: 999px; font-size: 16px;
+    padding: 12px 16px; border: none; border-radius: 999px; font-size: 15px;
     font-weight: 700; cursor: pointer; color: #fff;
   }
   .btn.primary { background: var(--knicks-orange); }
@@ -47,29 +57,66 @@
   .btn:active { transform: scale(0.96); }
   .btn[disabled] { opacity: 0.4; }
 
-  /* Intro / message overlay */
+  /* Intro overlay */
   #msg {
     position: absolute; inset: 0; z-index: 10; display: flex;
     flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 32px; gap: 18px; background: var(--knicks-blue);
+    text-align: center; padding: 32px; gap: 14px; background: var(--knicks-blue);
   }
   #msg.hide { display: none; }
   #msg h1 { margin: 0; font-size: 24px; }
-  #msg p { margin: 0; opacity: 0.92; line-height: 1.5; max-width: 320px; }
+  #msg p { margin: 0 0 6px; opacity: 0.92; line-height: 1.5; max-width: 320px; }
+
+  /* Live camera overlay */
+  #cam {
+    position: absolute; inset: 0; z-index: 20; display: none; background: #000;
+  }
+  #cam.show { display: block; }
+  #camVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  body.mirror #camVideo { transform: scaleX(-1); }
+  #count {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    font-size: 38vw; font-weight: 800; color: #fff; text-shadow: 0 4px 30px #000a; z-index: 2;
+  }
+  #count.show { display: flex; }
+  #camBar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 18px 22px calc(22px + env(safe-area-inset-bottom));
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  #camTop {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 3;
+    padding: calc(12px + env(safe-area-inset-top)) 18px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .cbtn {
+    min-width: 54px; height: 54px; padding: 0 14px; border-radius: 999px; border: none;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); color: #fff;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+  }
+  #shutter {
+    width: 78px; height: 78px; border-radius: 50%;
+    border: 5px solid #fff; background: var(--knicks-orange); cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.25);
+  }
+  #shutter:active { transform: scale(0.94); }
+
   .toast {
     position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-    z-index: 11; background: rgba(0,0,0,0.78); padding: 10px 16px; border-radius: 999px;
-    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
+    z-index: 30; background: rgba(0,0,0,0.82); padding: 10px 16px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%;
+    text-align: center;
   }
   .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
+  <div id="frames"></div>
+
   <div id="stage">
     <div id="frameBox">
       <canvas id="editCanvas"></canvas>
-      <img id="frame" src="frame_transparent.png" alt="Knicks frame" />
-      <img id="shot" alt="Your photo" />
+      <img id="frame" alt="Knicks frame" />
     </div>
   </div>
 
@@ -80,53 +127,102 @@
       <span class="zlabel">+</span>
     </div>
     <div id="btnRow">
-      <button class="btn ghost" id="camBtn2">📷 Retake</button>
-      <button class="btn primary" id="saveBtn" disabled>Print</button>
+      <button class="btn ghost" id="camBtn2">📷 Camera</button>
       <button class="btn ghost" id="pickBtn2">🖼 Library</button>
+      <button class="btn ghost" id="saveBtn" disabled>⬇️ Save</button>
+      <button class="btn primary" id="printBtn" disabled>🖨️ Print</button>
     </div>
   </div>
 
   <div id="msg">
     <h1>Let's Go Knicks! 🏀</h1>
-    <p>Take a photo and it drops into the frame. Drag and pinch to position it, then print.</p>
-    <button class="btn primary" id="camBtn">📷 Take Photo</button>
-    <button class="btn ghost" id="pickBtn">Choose from Library</button>
+    <p>Take a photo and it drops into the frame. Drag and pinch to position it, then save or print.</p>
+    <button class="btn primary" id="camBtn">📷 Open Camera</button>
+    <button class="btn ghost" id="pickBtn">🖼 Choose from Library</button>
+  </div>
+
+  <!-- Live camera overlay with countdown timer -->
+  <div id="cam">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div id="count"></div>
+    <div id="camTop">
+      <button class="cbtn" id="camClose">✕</button>
+      <button class="cbtn" id="timerBtn">⏱ Off</button>
+    </div>
+    <div id="camBar">
+      <button class="cbtn" id="flipBtn">🔄</button>
+      <button id="shutter" aria-label="Take photo"></button>
+      <span style="width:54px"></span>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
   <input id="file" type="file" accept="image/*" hidden />
-  <input id="cam" type="file" accept="image/*" capture="user" hidden />
 
 <script>
 const frameImg = document.getElementById('frame');
 const frameBox = document.getElementById('frameBox');
+const framesBar= document.getElementById('frames');
 const canvas   = document.getElementById('editCanvas');
 const ctx      = canvas.getContext('2d');
-const shot     = document.getElementById('shot');
 const fileIn   = document.getElementById('file');
-const camIn    = document.getElementById('cam');
 const zoomRow  = document.getElementById('zoomRow');
 const zoom     = document.getElementById('zoom');
 const saveBtn  = document.getElementById('saveBtn');
+const printBtn = document.getElementById('printBtn');
 const pickBtn  = document.getElementById('pickBtn');
 const pickBtn2 = document.getElementById('pickBtn2');
 const camBtn   = document.getElementById('camBtn');
 const camBtn2  = document.getElementById('camBtn2');
 const msg      = document.getElementById('msg');
 const toastEl  = document.getElementById('toast');
+// camera overlay els
+const camWrap  = document.getElementById('cam');
+const camVideo = document.getElementById('camVideo');
+const countEl  = document.getElementById('count');
+const camClose = document.getElementById('camClose');
+const timerBtn = document.getElementById('timerBtn');
+const flipBtn  = document.getElementById('flipBtn');
+const shutter  = document.getElementById('shutter');
 
-let win = null;            // transparent photo window in natural frame px
-let img = null;            // loaded photo (ImageBitmap or Image)
+let win = null;            // transparent photo window {x,y,w,h,W,H} in frame px
+let img = null;            // loaded photo
 let imgW = 0, imgH = 0;
-let baseScale = 1;         // scale that makes the photo "cover" the window
-let z = 1, panX = 0, panY = 0;
+let baseScale = 1, z = 1, panX = 0, panY = 0;
 
 function toast(t) {
   toastEl.textContent = t; toastEl.classList.add('show');
-  clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
 }
 
-// --- Detect the transparent window from the frame's alpha channel ---
+/* ---------------- Frames ---------------- */
+let FRAMES = [{ name: 'Brunson', src: 'frame_transparent.png' }];
+let frameIndex = 0;
+
+async function initFrames() {
+  try {
+    const r = await fetch('frames.json', { cache: 'no-store' });
+    if (r.ok) { const j = await r.json(); if (j.frames && j.frames.length) FRAMES = j.frames; }
+  } catch (e) {}
+  // Build the picker strip (only shown if more than one frame)
+  framesBar.innerHTML = '';
+  FRAMES.forEach((f, i) => {
+    const t = document.createElement('img');
+    t.className = 'thumb' + (i === 0 ? ' active' : '');
+    t.src = f.src; t.alt = f.name; t.title = f.name;
+    t.addEventListener('click', () => setFrame(i));
+    framesBar.appendChild(t);
+  });
+  if (FRAMES.length > 1) framesBar.classList.add('show');
+  setFrame(0);
+}
+function setFrame(i) {
+  frameIndex = i;
+  [...framesBar.children].forEach((el, k) => el.classList.toggle('active', k === i));
+  frameImg.src = FRAMES[i].src;     // triggers the load handler below
+}
+
+/* ------- Detect the transparent window from the frame's alpha ------- */
 frameImg.addEventListener('load', () => {
   const W = frameImg.naturalWidth, H = frameImg.naturalHeight;
   if (!W || !H) return;
@@ -148,48 +244,45 @@ frameImg.addEventListener('load', () => {
   }
   win = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, W, H };
 
-  // Position + size the editing canvas exactly over the window.
-  canvas.width = win.w; canvas.height = win.h;     // backing store = natural px
+  canvas.width = win.w; canvas.height = win.h;
   canvas.style.left   = (win.x / W * 100) + '%';
   canvas.style.top    = (win.y / H * 100) + '%';
   canvas.style.width  = (win.w / W * 100) + '%';
   canvas.style.height = (win.h / H * 100) + '%';
+
+  if (img) { refit(); render(); }   // re-fit current photo when switching frames
 });
 
-// --- Load a chosen photo (honoring EXIF orientation) ---
-async function loadFile(file) {
-  if (!file) return;
+/* ---------------- Load a photo ---------------- */
+function refit() {
+  baseScale = Math.max(win.w / imgW, win.h / imgH);  // cover
+  z = 1; panX = 0; panY = 0; zoom.value = 1;
+}
+async function loadPhoto(srcFile) {
+  if (!srcFile) return;
   try {
-    if (window.createImageBitmap) {
-      img = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    } else { throw 0; }
+    if (window.createImageBitmap) img = await createImageBitmap(srcFile, { imageOrientation: 'from-image' });
+    else throw 0;
   } catch (e) {
     img = await new Promise((res, rej) => {
       const im = new Image(); im.onload = () => res(im); im.onerror = rej;
-      im.src = URL.createObjectURL(file);
+      im.src = (srcFile instanceof Blob) ? URL.createObjectURL(srcFile) : srcFile;
     });
   }
   imgW = img.width || img.naturalWidth;
   imgH = img.height || img.naturalHeight;
-  baseScale = Math.max(win.w / imgW, win.h / imgH);  // cover
-  z = 1; panX = 0; panY = 0;
-  zoom.value = 1;
+  refit();
   msg.classList.add('hide');
   zoomRow.classList.add('show');
-  saveBtn.disabled = false;
-  shot.style.display = 'none';
+  saveBtn.disabled = false; printBtn.disabled = false;
   render();
   toast('Drag to move • pinch or slider to zoom');
 }
-
 pickBtn.addEventListener('click', () => fileIn.click());
 pickBtn2.addEventListener('click', () => fileIn.click());
-camBtn.addEventListener('click', () => camIn.click());
-camBtn2.addEventListener('click', () => camIn.click());
-fileIn.addEventListener('change', (e) => { loadFile(e.target.files[0]); fileIn.value = ''; });
-camIn.addEventListener('change', (e) => { loadFile(e.target.files[0]); camIn.value = ''; });
+fileIn.addEventListener('change', (e) => { loadPhoto(e.target.files[0]); fileIn.value = ''; });
 
-// --- Render the photo into the editing canvas with current zoom/pan ---
+/* ---------------- Editor render ---------------- */
 function clampPan() {
   const dw = imgW * baseScale * z, dh = imgH * baseScale * z;
   const mx = Math.max(0, (dw - win.w) / 2), my = Math.max(0, (dh - win.h) / 2);
@@ -208,17 +301,12 @@ function render() {
   ctx.fillRect(0, 0, win.w, win.h);
   ctx.drawImage(img, ox, oy, dw, dh);
 }
+zoom.addEventListener('input', () => { z = parseFloat(zoom.value); render(); });
 
-zoom.addEventListener('input', () => {
-  z = parseFloat(zoom.value);
-  render();
-});
-
-// --- Drag to pan, pinch to zoom (pointer events) ---
+/* ---------------- Drag / pinch ---------------- */
 const pointers = new Map();
 let pinchStart = null;
-function canvasScale() { return canvas.clientWidth / win.w; }  // css px per natural px
-
+function canvasScale() { return canvas.clientWidth / win.w; }
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -232,27 +320,19 @@ canvas.addEventListener('pointermove', (e) => {
   const prev = pointers.get(e.pointerId);
   const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
   if (pointers.size === 2 && pinchStart) {
     const p = [...pointers.values()];
     const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
     z = Math.max(1, Math.min(5, pinchStart.z * (dist / pinchStart.dist)));
-    zoom.value = z;
-    render();
+    zoom.value = z; render();
   } else if (pointers.size === 1) {
     const s = canvasScale();
-    panX += dx / s; panY += dy / s;
-    render();
+    panX += dx / s; panY += dy / s; render();
   }
 });
-function endPointer(e) {
-  pointers.delete(e.pointerId);
-  if (pointers.size < 2) pinchStart = null;
-}
+function endPointer(e) { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = null; }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-
-// Double-tap to reset position/zoom
 let lastTap = 0;
 canvas.addEventListener('pointerup', () => {
   const now = performance.now();
@@ -260,14 +340,72 @@ canvas.addEventListener('pointerup', () => {
   lastTap = now;
 });
 
-// --- Save: composite photo + frame at full resolution ---
+/* ---------------- Live camera + countdown ---------------- */
+let stream = null, facing = 'user', timerSec = 0, counting = false;
+const TIMERS = [0, 3, 5, 10];
+
+function setMirror() { document.body.classList.toggle('mirror', facing === 'user'); }
+
+async function openCamera() {
+  camWrap.classList.add('show');
+  await startStream();
+}
+async function startStream() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 } }, audio: false
+    });
+    camVideo.srcObject = stream;
+    await camVideo.play().catch(() => {});
+    setMirror();
+  } catch (e) {
+    toast('Camera unavailable — use Library instead');
+    closeCamera();
+  }
+}
+function closeCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; counting = false; countEl.classList.remove('show');
+  camWrap.classList.remove('show');
+}
+camBtn.addEventListener('click', openCamera);
+camBtn2.addEventListener('click', openCamera);
+camClose.addEventListener('click', closeCamera);
+flipBtn.addEventListener('click', () => { facing = facing === 'user' ? 'environment' : 'user'; startStream(); });
+timerBtn.addEventListener('click', () => {
+  timerSec = TIMERS[(TIMERS.indexOf(timerSec) + 1) % TIMERS.length];
+  timerBtn.textContent = '⏱ ' + (timerSec ? timerSec + 's' : 'Off');
+});
+
+function capturePhoto() {
+  const vw = camVideo.videoWidth, vh = camVideo.videoHeight;
+  if (!vw || !vh) return;
+  const c = document.createElement('canvas');
+  c.width = vw; c.height = vh;
+  const cx = c.getContext('2d');
+  if (facing === 'user') { cx.translate(vw, 0); cx.scale(-1, 1); }  // mirror selfies
+  cx.drawImage(camVideo, 0, 0, vw, vh);
+  c.toBlob((blob) => { closeCamera(); loadPhoto(blob); }, 'image/jpeg', 0.95);
+}
+shutter.addEventListener('click', () => {
+  if (counting) return;
+  if (!timerSec) { capturePhoto(); return; }
+  counting = true;
+  let n = timerSec;
+  countEl.textContent = n; countEl.classList.add('show');
+  const tick = setInterval(() => {
+    n--;
+    if (n <= 0) { clearInterval(tick); countEl.classList.remove('show'); counting = false; capturePhoto(); }
+    else { countEl.textContent = n; }
+  }, 1000);
+});
+
+/* ---------------- Export (Save / Print) ---------------- */
 let lastURL = null;
-saveBtn.addEventListener('click', () => {
-  if (!img || !win) return;
-  // Output at a true 2:3 ratio (Polaroid Hi-Print paper) so it prints
-  // edge to edge. The frame is a touch narrower than 2:3, so pad the sides
-  // with the frame's Knicks blue — seamless with the border.
-  const targetW = Math.round(win.H * 2 / 3);
+async function exportImage() {
+  if (!img || !win) return null;
+  const targetW = Math.round(win.H * 2 / 3);     // 2:3 = Polaroid Hi-Print paper
   const outW = Math.max(win.W, targetW);
   const padX = Math.round((outW - win.W) / 2);
   const out = document.createElement('canvas');
@@ -284,21 +422,31 @@ saveBtn.addEventListener('click', () => {
   o.drawImage(img, win.x + ox, win.y + oy, dw, dh);
   o.restore();
   o.drawImage(frameImg, 0, 0, win.W, win.H);
-
+  return await new Promise((res) => out.toBlob((b) => res(b), 'image/jpeg', 0.95));
+}
+async function share(intent) {
+  const blob = await exportImage();
+  if (!blob) return;
   if (lastURL) URL.revokeObjectURL(lastURL);
-  out.toBlob(async (blob) => {
-    lastURL = URL.createObjectURL(blob);
-    const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
-    // Opens the iOS share sheet — choose your Polaroid app, AirPrint, or Save to Photos.
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Knicks photo' }); return; } catch (e) {}
-    }
-    const a = document.createElement('a');
-    a.href = lastURL; a.download = 'knicks.jpg';
-    document.body.appendChild(a); a.click(); a.remove();
-    toast('Saved — open it in your printer app to print');
-  }, 'image/jpeg', 0.95);
-});
+  lastURL = URL.createObjectURL(blob);
+  const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Knicks photo' });
+      return;
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  // Fallback (desktop / unsupported): download
+  const a = document.createElement('a');
+  a.href = lastURL; a.download = 'knicks.jpg';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast(intent === 'print' ? 'Saved — open it in your printer app' : 'Saved to your downloads');
+}
+saveBtn.addEventListener('click', () => share('save'));
+printBtn.addEventListener('click', () => share('print'));
+
+/* ---------------- Go ---------------- */
+initFrames();
 </script>
 </body>
 </html>
