@@ -1,5 +1,7 @@
 {
   "frames": [
-    { "name": "Brunson", "src": "frame_transparent.png" }
+    { "name": "Brunson", "src": "frame_brunson.png" },
+    { "name": "OG", "src": "frame_og.png" },
+    { "name": "Winner", "src": "frame_winner.png" }
   ]
 }
