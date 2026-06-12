@@ -1,7 +1,9 @@
 {
   "frames": [
-    { "name": "Brunson", "src": "frame_brunson.png" },
-    { "name": "OG", "src": "frame_og.png" },
-    { "name": "Winner", "src": "frame_winner.png" }
+    { "name": "Brunson", "src": "frame_brunson.png", "out": "2:3" },
+    { "name": "OG", "src": "frame_og.png", "out": "2:3" },
+    { "name": "Winner", "src": "frame_winner.png", "out": "2:3" },
+    { "name": "Brunson (IG)", "src": "frame_insta_brunson.png", "out": "native" },
+    { "name": "OG (IG)", "src": "frame_insta_og.png", "out": "native" }
   ]
 }

@@ -308,9 +308,17 @@ canvas.addEventListener('pointerup', () => {
 let lastURL = null;
 async function exportImage() {
   if (!img || !win) return null;
-  const targetW = Math.round(win.H * 2 / 3);     // 2:3 = Polaroid Hi-Print paper
-  const outW = Math.max(win.W, targetW);
-  const padX = Math.round((outW - win.W) / 2);
+  // Print frames (out:"2:3") pad to 2:3 for the Polaroid; story frames
+  // (out:"native") export at their own 9:16 shape for Instagram.
+  const mode = (FRAMES[frameIndex] && FRAMES[frameIndex].out) || '2:3';
+  let outW, padX;
+  if (mode === '2:3') {
+    const targetW = Math.round(win.H * 2 / 3);   // 2:3 = Polaroid Hi-Print paper
+    outW = Math.max(win.W, targetW);
+    padX = Math.round((outW - win.W) / 2);
+  } else {
+    outW = win.W; padX = 0;                      // native frame ratio (no padding)
+  }
   const out = document.createElement('canvas');
   out.width = outW; out.height = win.H;
   const o = out.getContext('2d');
