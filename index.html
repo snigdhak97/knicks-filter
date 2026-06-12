@@ -4,6 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Knicks Filter</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#003ca6" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Knicks" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
   :root { --knicks-blue: #1d42ba; --knicks-orange: #f58426; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -73,19 +80,22 @@
       <span class="zlabel">+</span>
     </div>
     <div id="btnRow">
-      <button class="btn ghost" id="changeBtn">Photo</button>
-      <button class="btn primary" id="saveBtn" disabled>Save</button>
+      <button class="btn ghost" id="camBtn2">📷 Retake</button>
+      <button class="btn primary" id="saveBtn" disabled>Print</button>
+      <button class="btn ghost" id="pickBtn2">🖼 Library</button>
     </div>
   </div>
 
   <div id="msg">
     <h1>Let's Go Knicks! 🏀</h1>
-    <p>Add a photo and it'll drop into the frame. Then drag and pinch to position it.</p>
-    <button class="btn primary" id="pickBtn">Choose a photo</button>
+    <p>Take a photo and it drops into the frame. Drag and pinch to position it, then print.</p>
+    <button class="btn primary" id="camBtn">📷 Take Photo</button>
+    <button class="btn ghost" id="pickBtn">Choose from Library</button>
   </div>
 
   <div class="toast" id="toast"></div>
   <input id="file" type="file" accept="image/*" hidden />
+  <input id="cam" type="file" accept="image/*" capture="user" hidden />
 
 <script>
 const frameImg = document.getElementById('frame');
@@ -94,11 +104,14 @@ const canvas   = document.getElementById('editCanvas');
 const ctx      = canvas.getContext('2d');
 const shot     = document.getElementById('shot');
 const fileIn   = document.getElementById('file');
+const camIn    = document.getElementById('cam');
 const zoomRow  = document.getElementById('zoomRow');
 const zoom     = document.getElementById('zoom');
 const saveBtn  = document.getElementById('saveBtn');
-const changeBtn= document.getElementById('changeBtn');
 const pickBtn  = document.getElementById('pickBtn');
+const pickBtn2 = document.getElementById('pickBtn2');
+const camBtn   = document.getElementById('camBtn');
+const camBtn2  = document.getElementById('camBtn2');
 const msg      = document.getElementById('msg');
 const toastEl  = document.getElementById('toast');
 
@@ -170,8 +183,11 @@ async function loadFile(file) {
 }
 
 pickBtn.addEventListener('click', () => fileIn.click());
-changeBtn.addEventListener('click', () => fileIn.click());
-fileIn.addEventListener('change', (e) => loadFile(e.target.files[0]));
+pickBtn2.addEventListener('click', () => fileIn.click());
+camBtn.addEventListener('click', () => camIn.click());
+camBtn2.addEventListener('click', () => camIn.click());
+fileIn.addEventListener('change', (e) => { loadFile(e.target.files[0]); fileIn.value = ''; });
+camIn.addEventListener('change', (e) => { loadFile(e.target.files[0]); camIn.value = ''; });
 
 // --- Render the photo into the editing canvas with current zoom/pan ---
 function clampPan() {
@@ -248,9 +264,18 @@ canvas.addEventListener('pointerup', () => {
 let lastURL = null;
 saveBtn.addEventListener('click', () => {
   if (!img || !win) return;
+  // Output at a true 2:3 ratio (Polaroid Hi-Print paper) so it prints
+  // edge to edge. The frame is a touch narrower than 2:3, so pad the sides
+  // with the frame's Knicks blue — seamless with the border.
+  const targetW = Math.round(win.H * 2 / 3);
+  const outW = Math.max(win.W, targetW);
+  const padX = Math.round((outW - win.W) / 2);
   const out = document.createElement('canvas');
-  out.width = win.W; out.height = win.H;
+  out.width = outW; out.height = win.H;
   const o = out.getContext('2d');
+  o.fillStyle = 'rgb(0,60,166)';
+  o.fillRect(0, 0, outW, win.H);
+  o.translate(padX, 0);
   o.fillStyle = '#fff';
   o.fillRect(win.x, win.y, win.w, win.h);
   const { dw, dh, ox, oy } = placement();
@@ -264,13 +289,14 @@ saveBtn.addEventListener('click', () => {
   out.toBlob(async (blob) => {
     lastURL = URL.createObjectURL(blob);
     const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
+    // Opens the iOS share sheet — choose your Polaroid app, AirPrint, or Save to Photos.
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file] }); return; } catch (e) {}
+      try { await navigator.share({ files: [file], title: 'Knicks photo' }); return; } catch (e) {}
     }
     const a = document.createElement('a');
     a.href = lastURL; a.download = 'knicks.jpg';
     document.body.appendChild(a); a.click(); a.remove();
-    toast('Saved to your downloads');
+    toast('Saved — open it in your printer app to print');
   }, 'image/jpeg', 0.95);
 });
 </script>
