@@ -191,7 +191,7 @@ const toastEl  = document.getElementById('toast');
 let win = null;            // transparent photo window {x,y,w,h,W,H} in frame px
 let img = null;            // loaded photo
 let imgW = 0, imgH = 0;
-let baseScale = 1, z = 1, panX = 0, panY = 0;
+let baseScale = 1, z = 1, panX = 0, panY = 0, minZoom = 1;
 
 function toast(t) {
   toastEl.textContent = t; toastEl.classList.add('show');
@@ -271,8 +271,13 @@ frameImg.addEventListener('load', () => {
 
 /* ---------------- Load a photo ---------------- */
 function refit() {
-  baseScale = Math.max(win.w / imgW, win.h / imgH);  // cover, aspect preserved
-  z = 1; panX = 0; panY = 0; zoom.value = 1;
+  const cover   = Math.max(win.w / imgW, win.h / imgH);   // fills the window
+  const contain = Math.min(win.w / imgW, win.h / imgH);   // whole photo visible
+  baseScale = cover;
+  minZoom = contain / cover;          // < 1, so you can zoom OUT to the whole photo
+  zoom.min = minZoom;
+  z = minZoom;                        // open showing the whole photo (not zoomed in)
+  panX = 0; panY = 0; zoom.value = z;
 }
 async function loadPhoto(srcFile) {
   if (!srcFile) return;
@@ -393,7 +398,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (pointers.size === 2 && pinchStart) {
     const p = [...pointers.values()];
     const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
-    z = Math.max(1, Math.min(5, pinchStart.z * (dist / pinchStart.dist)));
+    z = Math.max(minZoom, Math.min(5, pinchStart.z * (dist / pinchStart.dist)));
     zoom.value = z; render();
   } else if (pointers.size === 1) {
     const s = canvasScale();
@@ -406,7 +411,7 @@ canvas.addEventListener('pointercancel', endPointer);
 let lastTap = 0;
 canvas.addEventListener('pointerup', () => {
   const now = performance.now();
-  if (now - lastTap < 300) { z = 1; zoom.value = 1; panX = 0; panY = 0; render(); }
+  if (now - lastTap < 300) { z = minZoom; zoom.value = minZoom; panX = 0; panY = 0; render(); }
   lastTap = now;
 });
 
