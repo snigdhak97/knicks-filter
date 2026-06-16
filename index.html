@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Knicks Filter</title>
+<title>Knicks Photo Booth</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#003ca6" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -11,102 +11,108 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Knicks" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet" />
 <style>
-  :root { --knicks-blue: #003ca6; --knicks-orange: #f58426; }
+  :root { --blue: #003ca6; --orange: #f58426; --marker: 'Permanent Marker', 'Comic Sans MS', cursive; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
-    margin: 0; height: 100%; background: #000; overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #fff; touch-action: manipulation;
+    margin: 0; height: 100%; background: #fff; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111;
+    touch-action: manipulation;
   }
-  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  /* frameBox is sized in JS to the frame's exact fitted rect, so the photo
-     canvas never gets stretched (proportions preserved). */
+  .view { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  .view.hidden { display: none; }
+
+  /* Title bar */
+  .titlebar {
+    flex: 0 0 auto; background: var(--blue); color: #fff;
+    font-family: var(--marker); text-align: center; letter-spacing: 1px;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
+    font-size: 24px;
+  }
+  .titlebar .ball { font-family: sans-serif; }
+
+  /* Bottom action bar */
+  .bottombar {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-around;
+    gap: 8px; padding: 14px 12px calc(14px + env(safe-area-inset-bottom));
+    background: #fff; border-top: 2px solid #eee;
+  }
+  .act {
+    font-family: var(--marker); font-size: 17px; letter-spacing: 0.5px; white-space: nowrap;
+    background: none; border: none; color: var(--blue); cursor: pointer; padding: 8px 8px;
+  }
+  .act.primary { color: var(--orange); }
+  .act:active { transform: scale(0.95); }
+  .act[disabled] { opacity: 0.35; }
+
+  /* ---------- HOME (gallery) ---------- */
+  #gridWrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 18px 16px 8px; }
+  #grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card {
+    background: #e9e9e9; border-radius: 14px; padding: 8px;
+    border: 3px solid transparent; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; transition: border-color .15s, transform .1s;
+  }
+  .card.active { border-color: var(--orange); }
+  .card:active { transform: scale(0.98); }
+  .card img { width: 100%; height: 30vh; object-fit: contain; border-radius: 8px; pointer-events: none; }
+  .card .label { font-family: var(--marker); font-size: 18px; margin: 8px 0 4px; color: #222; }
+  .hint { text-align: center; font-family: var(--marker); color: #888; padding: 6px 0 2px; font-size: 15px; }
+
+  /* ---------- EDITOR ---------- */
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; background: #fafafa; }
   #frameBox { position: relative; }
   #frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 2; pointer-events: none; }
   #editCanvas { position: absolute; z-index: 1; background: #fff; touch-action: none; }
-
-  /* Frame picker strip (top) */
-  #frames {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 6; display: none;
-    gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
-    overflow-x: auto; white-space: nowrap; background: linear-gradient(#000a, #0000);
-  }
-  #frames.show { display: flex; }
-  .thumb {
-    height: 64px; width: auto; border-radius: 8px; border: 2px solid transparent;
-    flex: 0 0 auto; background: #fff; cursor: pointer; object-fit: contain;
-  }
-  .thumb.active { border-color: var(--knicks-orange); }
-
-  /* Bottom controls */
-  #controls {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
-    padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-  }
-  #zoomRow { display: none; align-items: center; gap: 10px; width: min(92%, 420px); }
-  #zoomRow.show { display: flex; }
-  #zoom { flex: 1; accent-color: var(--knicks-orange); }
-  .zlabel { font-size: 18px; opacity: 0.9; width: 18px; text-align: center; }
-  #btnRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
-  .btn {
-    padding: 12px 16px; border: none; border-radius: 999px; font-size: 15px;
-    font-weight: 700; cursor: pointer; color: #fff;
-  }
-  .btn.primary { background: var(--knicks-orange); }
-  .btn.ghost { background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); }
-  .btn:active { transform: scale(0.96); }
-  .btn[disabled] { opacity: 0.4; }
-
-  /* Intro overlay */
-  #msg {
-    position: absolute; inset: 0; z-index: 10; display: flex;
-    flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 32px; gap: 14px; background: var(--knicks-blue);
-  }
-  #msg.hide { display: none; }
-  #msg h1 { margin: 0; font-size: 24px; }
-  #msg p { margin: 0 0 6px; opacity: 0.92; line-height: 1.5; max-width: 320px; }
+  #zoomRow { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 22px 2px; }
+  #zoom { flex: 1; accent-color: var(--orange); }
+  .zlabel { font-size: 18px; opacity: 0.8; width: 16px; text-align: center; }
 
   .toast {
-    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-    z-index: 30; background: rgba(0,0,0,0.82); padding: 10px 16px; border-radius: 999px;
-    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%;
-    text-align: center;
+    position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    z-index: 40; background: rgba(0,0,0,0.82); color: #fff; padding: 10px 16px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%; text-align: center;
   }
   .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
-  <div id="frames"></div>
-
-  <div id="stage">
-    <div id="frameBox">
-      <canvas id="editCanvas"></canvas>
-      <img id="frame" alt="Knicks frame" />
+  <!-- ========== HOME / GALLERY ========== -->
+  <div id="home" class="view">
+    <div class="titlebar"><span class="ball">🏀</span> Knicks Photo Booth</div>
+    <div id="gridWrap">
+      <div class="hint">Pick a frame, then take or choose a photo</div>
+      <div id="grid"></div>
+    </div>
+    <div class="bottombar">
+      <button class="act primary" id="homeTake">Take Photo</button>
+      <button class="act" id="homeSelect">Select Photo</button>
+      <button class="act" id="homePrint">Print</button>
     </div>
   </div>
 
-  <div id="controls">
+  <!-- ========== EDITOR ========== -->
+  <div id="editor" class="view hidden">
+    <div class="titlebar"><span class="ball">🏀</span> Knicks Photo Booth</div>
+    <div id="stage">
+      <div id="frameBox">
+        <canvas id="editCanvas"></canvas>
+        <img id="frame" alt="Knicks frame" />
+      </div>
+    </div>
     <div id="zoomRow">
       <span class="zlabel">&#x2212;</span>
       <input id="zoom" type="range" min="1" max="5" step="0.01" value="1" />
       <span class="zlabel">+</span>
     </div>
-    <div id="btnRow">
-      <button class="btn ghost" id="camBtn2">📷 Retake</button>
-      <button class="btn ghost" id="pickBtn2">🖼 Library</button>
-      <button class="btn ghost" id="saveBtn" disabled>⬇️ Save</button>
-      <button class="btn primary" id="printBtn" disabled>🖨️ Print</button>
+    <div class="bottombar">
+      <button class="act primary" id="edPrint">Print</button>
+      <button class="act" id="edSave">Save</button>
+      <button class="act" id="edOneMore">One More</button>
     </div>
-  </div>
-
-  <div id="msg">
-    <h1>Let's Go Knicks! 🏀</h1>
-    <p>Take a photo and it drops into the frame. Drag and pinch to position it, then save or print.</p>
-    <button class="btn primary" id="camBtn">📷 Take Photo</button>
-    <button class="btn ghost" id="pickBtn">🖼 Choose from Library</button>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -114,65 +120,64 @@
   <input id="cam" type="file" accept="image/*" capture="user" hidden />
 
 <script>
+const homeView = document.getElementById('home');
+const editorView = document.getElementById('editor');
+const grid     = document.getElementById('grid');
 const frameImg = document.getElementById('frame');
 const stage    = document.getElementById('stage');
 const frameBox = document.getElementById('frameBox');
-const framesBar= document.getElementById('frames');
 const canvas   = document.getElementById('editCanvas');
 const ctx      = canvas.getContext('2d');
 const fileIn   = document.getElementById('file');
 const camIn    = document.getElementById('cam');
-const zoomRow  = document.getElementById('zoomRow');
 const zoom     = document.getElementById('zoom');
-const saveBtn  = document.getElementById('saveBtn');
-const printBtn = document.getElementById('printBtn');
-const pickBtn  = document.getElementById('pickBtn');
-const pickBtn2 = document.getElementById('pickBtn2');
-const camBtn   = document.getElementById('camBtn');
-const camBtn2  = document.getElementById('camBtn2');
-const msg      = document.getElementById('msg');
 const toastEl  = document.getElementById('toast');
 
 let win = null;            // transparent photo window {x,y,w,h,W,H} in frame px
 let img = null;            // loaded photo
 let imgW = 0, imgH = 0;
 let baseScale = 1, z = 1, panX = 0, panY = 0, minZoom = 1;
+let frameIndex = 0;        // selected frame
+let pendingEditor = false; // waiting for frame to finish loading before showing editor
 
 function toast(t) {
   toastEl.textContent = t; toastEl.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
 }
+function showView(name) {
+  homeView.classList.toggle('hidden', name !== 'home');
+  editorView.classList.toggle('hidden', name !== 'editor');
+}
 
-/* ---------------- Frames ---------------- */
-let FRAMES = [{ name: 'Brunson', src: 'frame_transparent.png' }];
-let frameIndex = 0;
+/* ---------------- Frames / gallery ---------------- */
+let FRAMES = [{ name: 'Brunson', src: 'frame_transparent.png', out: '2:3' }];
 
 async function initFrames() {
   try {
     const r = await fetch('frames.json', { cache: 'no-store' });
     if (r.ok) { const j = await r.json(); if (j.frames && j.frames.length) FRAMES = j.frames; }
   } catch (e) {}
-  framesBar.innerHTML = '';
+  grid.innerHTML = '';
   FRAMES.forEach((f, i) => {
-    const t = document.createElement('img');
-    t.className = 'thumb' + (i === 0 ? ' active' : '');
-    t.src = f.src; t.alt = f.name; t.title = f.name;
-    t.addEventListener('click', () => setFrame(i));
-    framesBar.appendChild(t);
+    const card = document.createElement('div');
+    card.className = 'card' + (i === 0 ? ' active' : '');
+    card.innerHTML = '<img src="' + f.src + '" alt="' + f.name + '"><div class="label">' + f.name + '</div>';
+    card.addEventListener('click', () => selectFrame(i));
+    grid.appendChild(card);
   });
-  if (FRAMES.length > 1) framesBar.classList.add('show');
-  setFrame(0);
+  selectFrame(0);
 }
-function setFrame(i) {
+function selectFrame(i) {
   frameIndex = i;
-  [...framesBar.children].forEach((el, k) => el.classList.toggle('active', k === i));
-  frameImg.src = FRAMES[i].src;     // triggers the load handler below
+  [...grid.children].forEach((el, k) => el.classList.toggle('active', k === i));
+  if (frameImg.getAttribute('src') !== FRAMES[i].src) frameImg.src = FRAMES[i].src;  // preload + detect window
 }
 
 /* ---- Size frameBox to the frame's exact fitted rect (no stretching) ---- */
 function layout() {
   if (!win) return;
   const sw = stage.clientWidth, sh = stage.clientHeight;
+  if (!sw || !sh) return;
   const ar = win.W / win.H;
   let w = sw, h = sw / ar;
   if (h > sh) { h = sh; w = sh * ar; }
@@ -186,7 +191,6 @@ window.addEventListener('orientationchange', () => setTimeout(layout, 200));
 frameImg.addEventListener('load', () => {
   const W = frameImg.naturalWidth, H = frameImg.naturalHeight;
   if (!W || !H) return;
-
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const cc = c.getContext('2d');
@@ -202,27 +206,31 @@ frameImg.addEventListener('load', () => {
     }
   }
   win = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, W, H };
-
-  // Canvas backing = window's native pixels; CSS position = % of frameBox.
   canvas.width = win.w; canvas.height = win.h;
   canvas.style.left   = (win.x / W * 100) + '%';
   canvas.style.top    = (win.y / H * 100) + '%';
   canvas.style.width  = (win.w / W * 100) + '%';
   canvas.style.height = (win.h / H * 100) + '%';
-
-  layout();
-  if (img) { refit(); render(); }
+  if (img && pendingEditor) enterEditor();
+  else if (img) { layout(); render(); }
 });
 
-/* ---------------- Load a photo ---------------- */
+/* ---------------- Load a photo + enter editor ---------------- */
 function refit() {
-  const cover   = Math.max(win.w / imgW, win.h / imgH);   // fills the window
-  const contain = Math.min(win.w / imgW, win.h / imgH);   // whole photo visible
+  const cover   = Math.max(win.w / imgW, win.h / imgH);
+  const contain = Math.min(win.w / imgW, win.h / imgH);
   baseScale = cover;
   minZoom = contain / cover;          // < 1, so you can zoom OUT to the whole photo
   zoom.min = minZoom;
-  z = minZoom;                        // open showing the whole photo (not zoomed in)
+  z = minZoom;                        // open showing the whole photo
   panX = 0; panY = 0; zoom.value = z;
+}
+function enterEditor() {
+  if (!img) return;
+  if (!win) { pendingEditor = true; return; }   // frame still loading
+  pendingEditor = false;
+  showView('editor');
+  refit(); layout(); render();
 }
 async function loadPhoto(srcFile) {
   if (!srcFile) return;
@@ -237,21 +245,24 @@ async function loadPhoto(srcFile) {
   }
   imgW = img.width || img.naturalWidth;
   imgH = img.height || img.naturalHeight;
-  refit();
-  msg.classList.add('hide');
-  zoomRow.classList.add('show');
-  saveBtn.disabled = false; printBtn.disabled = false;
-  render();
-  toast('Drag to move • pinch or slider to zoom');
+  enterEditor();
 }
-pickBtn.addEventListener('click', () => fileIn.click());
-pickBtn2.addEventListener('click', () => fileIn.click());
-camBtn.addEventListener('click', () => camIn.click());
-camBtn2.addEventListener('click', () => camIn.click());
+
+/* ---------------- Gallery buttons ---------------- */
+document.getElementById('homeTake').addEventListener('click', () => { pendingEditor = true; camIn.click(); });
+document.getElementById('homeSelect').addEventListener('click', () => { pendingEditor = true; fileIn.click(); });
+document.getElementById('homePrint').addEventListener('click', () => {
+  if (img) share('print'); else toast('Pick a frame and take a photo first');
+});
 fileIn.addEventListener('change', (e) => { loadPhoto(e.target.files[0]); fileIn.value = ''; });
 camIn.addEventListener('change', (e) => { loadPhoto(e.target.files[0]); camIn.value = ''; });
 
-/* ---------------- Editor render (aspect-preserving cover) ---------------- */
+/* ---------------- Editor buttons ---------------- */
+document.getElementById('edPrint').addEventListener('click', () => share('print'));
+document.getElementById('edSave').addEventListener('click', () => share('save'));
+document.getElementById('edOneMore').addEventListener('click', () => { showView('home'); });
+
+/* ---------------- Editor render (aspect-preserving) ---------------- */
 function clampPan() {
   const dw = imgW * baseScale * z, dh = imgH * baseScale * z;
   const mx = Math.max(0, (dw - win.w) / 2), my = Math.max(0, (dh - win.h) / 2);
@@ -268,7 +279,7 @@ function render() {
   const { dw, dh, ox, oy } = placement();
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, win.w, win.h);
-  ctx.drawImage(img, ox, oy, dw, dh);   // dw/dh share one scale → no distortion
+  ctx.drawImage(img, ox, oy, dw, dh);
 }
 zoom.addEventListener('input', () => { z = parseFloat(zoom.value); render(); });
 
@@ -313,8 +324,6 @@ canvas.addEventListener('pointerup', () => {
 let lastURL = null;
 async function exportImage() {
   if (!img || !win) return null;
-  // Print frames (out:"2:3") pad to 2:3 for the Polaroid; story frames
-  // (out:"native") export at their own 9:16 shape for Instagram.
   const mode = (FRAMES[frameIndex] && FRAMES[frameIndex].out) || '2:3';
   let outW, padX;
   if (mode === '2:3') {
@@ -342,7 +351,7 @@ async function exportImage() {
 }
 async function share(intent) {
   const blob = await exportImage();
-  if (!blob) return;
+  if (!blob) { toast('Take a photo first'); return; }
   if (lastURL) URL.revokeObjectURL(lastURL);
   lastURL = URL.createObjectURL(blob);
   const file = new File([blob], 'knicks.jpg', { type: 'image/jpeg' });
@@ -355,8 +364,6 @@ async function share(intent) {
   document.body.appendChild(a); a.click(); a.remove();
   toast(intent === 'print' ? 'Saved — open it in your printer app' : 'Saved to your downloads');
 }
-saveBtn.addEventListener('click', () => share('save'));
-printBtn.addEventListener('click', () => share('print'));
 
 /* ---------------- Go ---------------- */
 initFrames();
