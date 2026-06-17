@@ -136,7 +136,7 @@ const toastEl  = document.getElementById('toast');
 let win = null;            // transparent photo window {x,y,w,h,W,H} in frame px
 let img = null;            // loaded photo
 let imgW = 0, imgH = 0;
-let baseScale = 1, z = 1, panX = 0, panY = 0, minZoom = 1;
+let baseScale = 1, z = 1, panX = 0, panY = 0, minZoom = 1, renderScale = 1;
 let frameIndex = 0;        // selected frame
 let pendingEditor = false; // waiting for frame to finish loading before showing editor
 
@@ -206,7 +206,12 @@ frameImg.addEventListener('load', () => {
     }
   }
   win = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, W, H };
-  canvas.width = win.w; canvas.height = win.h;
+  // Supersample the preview canvas well above the frame's native window size
+  // so it stays crisp on hi-DPI screens (the window is only ~440px otherwise).
+  renderScale = Math.min(4, Math.max(2, 1400 / win.w));
+  canvas.width = Math.round(win.w * renderScale);
+  canvas.height = Math.round(win.h * renderScale);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   canvas.style.left   = (win.x / W * 100) + '%';
   canvas.style.top    = (win.y / H * 100) + '%';
   canvas.style.width  = (win.w / W * 100) + '%';
@@ -277,6 +282,8 @@ function render() {
   if (!img || !win) return;
   clampPan();
   const { dw, dh, ox, oy } = placement();
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);  // draw at hi-res
+  ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, win.w, win.h);
   ctx.drawImage(img, ox, oy, dw, dh);
@@ -333,9 +340,14 @@ async function exportImage() {
   } else {
     outW = win.W; padX = 0;                      // native frame ratio (no padding)
   }
+  // Render the file at 2-3x the frame's native size so the high-res photo
+  // keeps its detail (the frame art upscales cleanly).
+  const ES = Math.min(3, Math.max(1, 1500 / win.W));
   const out = document.createElement('canvas');
-  out.width = outW; out.height = win.H;
+  out.width = Math.round(outW * ES); out.height = Math.round(win.H * ES);
   const o = out.getContext('2d');
+  o.imageSmoothingEnabled = true; o.imageSmoothingQuality = 'high';
+  o.scale(ES, ES);
   o.fillStyle = 'rgb(0,60,166)';
   o.fillRect(0, 0, outW, win.H);
   o.translate(padX, 0);
